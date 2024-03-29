@@ -1,0 +1,81 @@
+- name: Remote Server
+  hosts: all
+  remote_user: root
+
+  tasks:
+  - name: 01 Create Directory /usr/local/opt, 0755
+    file:
+      path: /usr/local/opt
+      state: directory
+      mode: 0755
+
+  - name: 02 Create Directory /usr/lib/code-server, 0755
+    file:
+      path: /usr/lib/code-server
+      state: directory
+      mode: 0755
+    
+  - name: 03.0 register status of code-server
+    stat:
+      path: /usr/local/opt/code-server-4.22.1-linux-amd64.tar.gz
+    register: code_server_exist
+
+  - name: 03.1 Download and Unpack code-server
+    when: not code_server_exist.stat.exists
+    block:
+    - name: 03.2 Download file into /usr/local/opt
+      get_url:
+        url: https://github.com/coder/code-server/releases/download/v4.22.1/code-server-4.22.1-linux-amd64.tar.gz
+        dest: /usr/local/opt
+
+    - name: 04 Unpack the tar.gz
+      unarchive:
+        remote_src: true
+        src: /usr/local/opt/code-server-4.22.1-linux-amd64.tar.gz
+        dest: /usr/local/opt/
+
+  - name: 05 symbolic library link
+    file:
+      src: /usr/local/opt/code-server-4.22.1-linux-amd64
+      dest: /usr/lib/code-server
+      state: link
+      force: yes
+
+  - name: 06 bin to bin
+    file:
+      src: /usr/local/opt/code-server-4.22.1-linux-amd64/bin/code-server
+      dest: /usr/bin/code-server
+      state: link
+
+  - name: 2.01 Generate code-server service - write to /etc/systemd/system/code-server.service
+    template:
+      src: /home/fred/git/digitaloceanlearning/WORKSHOP02/code-server.service.j2
+      dest: /etc/systemd/system/code-server.service
+
+  - name: 2.02 systemctl daemon_reload
+    systemd:
+      daemon_reload: true
+      enabled: true
+      name: code-server.service
+      state: started
+
+  - name: install nginx
+    apt: name=nginx state=latest
+
+  - name: generate code-server.conf into /etc/nginx/site-available/code-server.conf
+    template:
+      src: /home/fred/git/digitaloceanlearning/WORKSHOP02/code-server.conf.j2
+      dest: /etc/nginx/sites-available/code-server.conf
+
+  - name: link /etc/nginx/site-available/code-server.conf to /etc/nginx/site-enabled/code-server.conf
+    file:
+      src: /etc/nginx/sites-available/code-server.conf
+      dest: /etc/nginx/sites-enabled/code-server.conf
+      state: link
+
+  - name: restart nginx
+    systemd:
+      daemon_reload: true
+      enabled: true
+      name: nginx.service
+      state: restarted
